@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patients - Guardian Net</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <i class="bi bi-shield-shaded"></i>
+                <span>Guardian Net</span>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="/dashboard.html">
+                    <i class="bi bi-house-door"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="/patients.html" class="active">
+                    <i class="bi bi-people"></i>
+                    <span>Patients</span>
+                </a>
+                <a href="/monitor.html">
+                    <i class="bi bi-camera-video"></i>
+                    <span>Live Monitor</span>
+                </a>
+                <a href="#" id="logoutBtn">
+                    <i class="bi bi-box-arrow-right"></i>
+                    <span>Logout</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <i class="bi bi-person-circle"></i>
+                    <div>
+                        <p id="userName">Loading...</p>
+                        <small>Caretaker</small>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="content-header">
+                <h1>Patient Management</h1>
+                <div class="header-actions">
+                    <button class="btn btn-primary" onclick="openAddModal()">
+                        <i class="bi bi-plus"></i> Add New Patient
+                    </button>
+                </div>
+            </header>
+
+            <!-- Stats Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon blue">
+                        <i class="bi bi-people"></i>
+                    </div>
+                    <div class="stat-details">
+                        <h3 id="totalPatients">0</h3>
+                        <p>Total Patients</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon green">
+                        <i class="bi bi-person-check"></i>
+                    </div>
+                    <div class="stat-details">
+                        <h3 id="activePatients">0</h3>
+                        <p>Active Patients</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon orange">
+                        <i class="bi bi-telephone"></i>
+                    </div>
+                    <div class="stat-details">
+                        <h3 id="emergencyContacts">0</h3>
+                        <p>Emergency Contacts</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Patients Table Card -->
+            <div class="card">
+                <div class="card-header">
+                    <h2><i class="bi bi-people"></i> All Patients</h2>
+                    <div class="search-box">
+                        <i class="bi bi-search"></i>
+                        <label for="searchPatient" class="sr-only">Search patients</label>
+                        <input type="text" id="searchPatient" placeholder="Search by name, contact, room...">
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Age</th>
+                                    <th>Gender</th>
+                                    <th>Emergency Contact</th>
+                                    <th>Phone</th>
+                                    <th>Relation</th>
+                                    <th>Room</th>
+                                    <th>Medical Conditions</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="patientsList">
+                                <tr>
+                                    <td colspan="9" class="text-center">
+                                        <span class="loading-spinner"></span>
+                                        Loading patients...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Stats Card -->
+            <div class="card">
+                <div class="card-header">
+                    <h2><i class="bi bi-graph-up"></i> Patient Demographics</h2>
+                </div>
+                <div class="card-body">
+                    <div class="stats-mini-grid">
+                        <div class="stat-mini">
+                            <span class="stat-label">Average Age</span>
+                            <span class="stat-value" id="avgAge">-</span>
+                        </div>
+                        <div class="stat-mini">
+                            <span class="stat-label">Male</span>
+                            <span class="stat-value" id="maleCount">0</span>
+                        </div>
+                        <div class="stat-mini">
+                            <span class="stat-label">Female</span>
+                            <span class="stat-value" id="femaleCount">0</span>
+                        </div>
+                        <div class="stat-mini">
+                            <span class="stat-label">With Conditions</span>
+                            <span class="stat-value" id="conditionsCount">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Add/Edit Patient Modal -->
+    <div id="patientModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Add New Patient</h2>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="patientForm" onsubmit="event.preventDefault(); savePatient();">
+                    <input type="hidden" id="patientId">
+                    
+                    <div class="form-section">
+                        <h3><i class="bi bi-person"></i> Personal Information</h3>
+                        <div class="form-group">
+                            <label for="fullName">Full Name <span class="required">*</span></label>
+                            <input type="text" id="fullName" name="fullName" placeholder="Enter full name" required>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="age">Age</label>
+                                <input type="number" id="age" name="age" min="0" max="150" placeholder="Age">
+                            </div>
+                            <div class="form-group">
+                                <label for="gender">Gender</label>
+                                <select id="gender" name="gender">
+                                    <option value="">Select gender</option>
+                                    <option value="Male">Male</option>
+                                    <option value="Female">Female</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="medical_conditions">Medical Conditions</label>
+                            <textarea id="medical_conditions" name="medical_conditions" rows="2" placeholder="List any medical conditions..."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3><i class="bi bi-telephone"></i> Emergency Contact</h3>
+                        <div class="form-group">
+                            <label for="emergencyName">Contact Name <span class="required">*</span></label>
+                            <input type="text" id="emergencyName" name="emergencyName" placeholder="Emergency contact name" required>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="emergencyPhone">Phone Number <span class="required">*</span></label>
+                                <input type="tel" id="emergencyPhone" name="emergencyPhone" placeholder="Phone number" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="emergencyRelation">Relation</label>
+                                <input type="text" id="emergencyRelation" name="emergencyRelation" placeholder="e.g., Spouse, Son, Daughter">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        <h3><i class="bi bi-house"></i> Location</h3>
+                        <div class="form-group">
+                            <label for="room_number">Room Number</label>
+                            <input type="text" id="room_number" name="room_number" placeholder="Room #">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal()">
+                    <i class="bi bi-x"></i> Cancel
+                </button>
+                <button class="btn btn-primary" onclick="savePatient()">
+                    <i class="bi bi-check"></i> Save Patient
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="deleteModal" class="modal">
+        <div class="modal-content delete-modal">
+            <div class="modal-header">
+                <h2><i class="bi bi-exclamation-triangle"></i> Confirm Delete</h2>
+                <button class="close-btn" onclick="closeDeleteModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete <strong id="deletePatientName">this patient</strong>?</p>
+                <p class="text-muted">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeDeleteModal()">
+                    <i class="bi bi-x"></i> Cancel
+                </button>
+                <button class="btn btn-danger" onclick="confirmDelete()">
+                    <i class="bi bi-trash"></i> Delete
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast">
+        <div class="toast-content">
+            <i class="bi bi-check-circle" id="toastIcon"></i>
+            <span id="toastMessage">Patient saved successfully</span>
+        </div>
+    </div>
+
+    <script src="/js/patients.js"></script>
+</body>
+</html>

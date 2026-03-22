@@ -1,0 +1,10 @@
+EMERGENCY DETECTION LOG
+==================================================
+Time: 2026-03-08 14:59:58
+Patient ID: 1
+Languages: english
+Emergency Level: medium
+Spoken Text: 'please help me emergencies near please help me'
+Keywords: help
+Emergency Count: 1
+==================================================

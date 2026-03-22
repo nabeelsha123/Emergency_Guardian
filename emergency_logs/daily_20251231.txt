@@ -1,0 +1,5 @@
+[14:11:56] Emergency: 'help me'
+[14:12:34] Emergency: 'help me help me'
+[14:13:10] Emergency: 'help me'
+[14:13:24] Emergency: 'help me help me help me'
+[14:14:40] Emergency: 'help me'

@@ -1,0 +1,9 @@
+EMERGENCY DETECTION LOG
+==================================================
+Time: 2025-12-31 14:23:00
+Languages: english
+Emergency Level: medium
+Spoken Text: 'help me ho kya'
+Keywords: help
+Emergency Count: 4
+==================================================

@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 3
+names: ['fallen', 'sitting', 'standing']
+
+roboflow:
+  workspace: test-ua73q
+  project: human-fall-detection-azxxr
+  version: 3
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/test-ua73q/human-fall-detection-azxxr/dataset/3

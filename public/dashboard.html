@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Guardian Net</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+</head>
+<body>
+    <div class="dashboard">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <i class="bi bi-shield-shaded"></i>
+                <span>Guardian Net</span>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="/dashboard.html" class="active">
+                    <i class="bi bi-house-door"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="/patients.html">
+                    <i class="bi bi-people"></i>
+                    <span>Patients</span>
+                </a>
+                <a href="/monitor.html">
+                    <i class="bi bi-camera-video"></i>
+                    <span>Live Monitor</span>
+                </a>
+                <a href="#" id="logoutBtn">
+                    <i class="bi bi-box-arrow-right"></i>
+                    <span>Logout</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <i class="bi bi-person-circle"></i>
+                    <div>
+                        <p id="userName">Loading...</p>
+                        <small>Caretaker</small>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="content-header">
+                <h1>Dashboard</h1>
+                <div class="header-actions">
+                    <button class="btn btn-primary" onclick="window.location.href='/patients.html'">
+                        <i class="bi bi-plus"></i> Add Patient
+                    </button>
+                </div>
+            </header>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon blue">
+                        <i class="bi bi-people"></i>
+                    </div>
+                    <div class="stat-details">
+                        <h3 id="totalPatients">0</h3>
+                        <p>Total Patients</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon red">
+                        <i class="bi bi-person-falling"></i>
+                    </div>
+                    <div class="stat-details">
+                        <h3 id="totalFalls">0</h3>
+                        <p>Total Falls</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon green">
+                        <i class="bi bi-mic"></i>
+                    </div>
+                    <div class="stat-details">
+                        <h3 id="totalVoice">0</h3>
+                        <p>Voice Emergencies</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon orange">
+                        <i class="bi bi-bell"></i>
+                    </div>
+                    <div class="stat-details">
+                        <h3 id="todayAlerts">0</h3>
+                        <p>Today's Alerts</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2><i class="bi bi-people"></i> Recent Patients</h2>
+                    <a href="/patients.html" class="btn btn-secondary">View All</a>
+                </div>
+                <div class="card-body">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Age</th>
+                                <th>Emergency Contact</th>
+                                <th>Room</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="patientsList">
+                            <tr><td colspan="5" class="text-center">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2><i class="bi bi-clock-history"></i> Recent Alerts</h2>
+                </div>
+                <div class="card-body">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Patient</th>
+                                <th>Type</th>
+                                <th>Message</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="alertsList">
+                            <tr><td colspan="5" class="text-center">No alerts</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/js/dashboard.js"></script>
+</body>
+</html>

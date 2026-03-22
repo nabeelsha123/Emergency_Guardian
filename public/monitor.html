@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Monitor - Guardian Net</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+</head>
+<body>
+
+<!-- ── Emergency popup ─────────────────────────────────────────────────── -->
+<div class="emergency-popup" id="emergencyPopup">
+    <i class="bi bi-exclamation-triangle"></i>
+    <h2 id="emergencyTitle">EMERGENCY!</h2>
+    <p id="emergencyMessage"></p>
+    <p class="time" id="emergencyTime"></p>
+    <div class="emergency-actions">
+        <button class="btn btn-secondary" onclick="acknowledgeEmergency()">
+            <i class="bi bi-check"></i> Acknowledge
+        </button>
+    </div>
+</div>
+
+<div class="dashboard">
+
+    <!-- ── Sidebar ─────────────────────────────────────────────────────── -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <i class="bi bi-shield-shaded"></i>
+            <span>Guardian Net</span>
+        </div>
+        <nav class="sidebar-nav">
+            <a href="/dashboard.html">
+                <i class="bi bi-house-door"></i><span>Dashboard</span>
+            </a>
+            <a href="/patients.html">
+                <i class="bi bi-people"></i><span>Patients</span>
+            </a>
+            <a href="/monitor.html" class="active">
+                <i class="bi bi-camera-video"></i><span>Live Monitor</span>
+            </a>
+            <a href="#" id="logoutBtn">
+                <i class="bi bi-box-arrow-right"></i><span>Logout</span>
+            </a>
+        </nav>
+        <div class="sidebar-footer">
+            <div class="user-info">
+                <i class="bi bi-person-circle"></i>
+                <div>
+                    <p id="userName">Loading...</p>
+                    <small>Caretaker</small>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ── Main content ────────────────────────────────────────────────── -->
+    <main class="main-content">
+
+        <!-- Header -->
+        <header class="content-header">
+            <h1>Live Monitoring</h1>
+            <div class="header-actions">
+
+                <!-- Connection status -->
+                <span class="status-badge" id="connectionStatus">
+                    <span class="status-led offline" id="connectionLed"></span>
+                    <span id="connectionText">Disconnected</span>
+                </span>
+
+                <!-- Patient selector -->
+                <select id="patientSelect" class="form-select"
+                        onchange="changePatient()"
+                        title="Select patient to monitor">
+                    <option value="1">Patient ID: 1</option>
+                </select>
+
+                <!-- Detector controls -->
+                <button class="btn btn-primary"
+                        id="startDetectorBtn"
+                        onclick="startDetector()">
+                    <i class="bi bi-play-fill"></i> Start Monitoring
+                </button>
+                <button class="btn btn-secondary"
+                        id="stopDetectorBtn"
+                        onclick="stopDetector()"
+                        disabled>
+                    <i class="bi bi-stop-fill"></i> Stop Monitoring
+                </button>
+                <button class="btn btn-danger"
+                        onclick="resetCounters()"
+                        title="Reset counters">
+                    <i class="bi bi-arrow-counterclockwise"></i> Reset
+                </button>
+            </div>
+        </header>
+
+        <!-- Stats cards -->
+        <div class="stats-grid">
+            <div class="stat-card" id="fallStatCard">
+                <div class="stat-icon red"><i class="bi bi-person-falling"></i></div>
+                <div class="stat-details">
+                    <h3 id="fallCount">0</h3>
+                    <p>Falls Detected</p>
+                    <small id="fallLastTime" class="text-muted">Last: -</small>
+                    <small id="fallConfidence" class="text-muted">Confidence: -</small>
+                </div>
+            </div>
+
+            <div class="stat-card" id="voiceStatCard">
+                <div class="stat-icon green"><i class="bi bi-mic"></i></div>
+                <div class="stat-details">
+                    <h3 id="voiceCount">0</h3>
+                    <p>Voice Emergencies</p>
+                    <small id="voiceLastTime" class="text-muted">Last: -</small>
+                    <small id="voiceKeywords" class="text-muted">Keywords: -</small>
+                </div>
+            </div>
+
+            <div class="stat-card" id="alertStatCard">
+                <div class="stat-icon orange"><i class="bi bi-bell"></i></div>
+                <div class="stat-details">
+                    <h3 id="alertCount">0</h3>
+                    <p>Total Alerts</p>
+                    <small id="currentState" class="text-muted">State: MONITORING</small>
+                    <small id="lastAlertTime" class="text-muted">Last: -</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Camera area (shows detection overlay once running) -->
+        <div class="camera-container">
+            <div class="camera-header">
+                <h3><i class="bi bi-camera-video"></i> Live Camera Feed</h3>
+                <span class="badge badge-info" id="cameraStatus">
+                    <span class="status-led offline" id="cameraLed"></span>
+                    <span id="cameraStatusText">Camera Offline</span>
+                </span>
+            </div>
+            <div class="camera-feed" id="cameraFeed">
+                <div class="no-feed-message" id="noFeedMessage">
+                    <i class="bi bi-camera-video-off"></i>
+                    <p>Camera feed not available</p>
+                    <small>Click <strong>Start Monitoring</strong> to begin</small>
+                </div>
+                <div class="detection-overlay" id="detectionOverlay" style="display:none;">
+                    <div class="detection-badge" id="detectionBadge">
+                        <span class="status-led active" id="detectionLed"></span>
+                        <span id="detectionText">MONITORING</span>
+                    </div>
+                    <div class="confidence-meter">
+                        <span class="confidence-label">Confidence</span>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="confidenceBar" style="width:0%"></div>
+                        </div>
+                        <span class="confidence-value" id="confidenceValue">0%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Detector status cards -->
+        <div class="status-grid">
+            <div class="status-card">
+                <div class="status-icon fall"><i class="bi bi-person-falling"></i></div>
+                <div class="status-info">
+                    <h4>Fall Detection</h4>
+                    <div class="status-row">
+                        <span class="status-led idle" id="fallLed"></span>
+                        <span id="fallStatus">Inactive</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill confidence-fall"
+                             id="fallProgress" style="width:0%"></div>
+                    </div>
+                    <div class="status-details">
+                        <span>Falls: <span id="fallFrames">0</span></span>
+                        <span>Threshold: 55%</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="status-card">
+                <div class="status-icon voice"><i class="bi bi-mic"></i></div>
+                <div class="status-info">
+                    <h4>Voice Detection</h4>
+                    <div class="status-row">
+                        <span class="status-led idle" id="voiceLed"></span>
+                        <span id="voiceStatus">Inactive</span>
+                    </div>
+                    <div class="language-badges">
+                        <span class="lang-badge">English</span>
+                        <span class="lang-badge">മലയാളം</span>
+                        <span class="lang-badge">हिंदी</span>
+                    </div>
+                    <div class="status-details">
+                        <span>Last heard: <span id="lastHeard">-</span></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="status-card">
+                <div class="status-icon system"><i class="bi bi-hdd-stack"></i></div>
+                <div class="status-info">
+                    <h4>System Status</h4>
+                    <div class="status-row">
+                        <span class="status-led offline" id="systemLed"></span>
+                        <span id="systemStatus">Disconnected</span>
+                    </div>
+                    <div class="status-details">
+                        <span>Patient: <span id="patientId">1</span></span>
+                        <span>Uptime: <span id="uptime">0s</span></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live log -->
+        <div class="card">
+            <div class="card-header">
+                <h2><i class="bi bi-terminal"></i> Live Detector Log</h2>
+                <div class="header-actions">
+                    <button class="btn-icon" onclick="exportLog()" title="Export log">
+                        <i class="bi bi-download"></i>
+                    </button>
+                    <button class="btn-icon" onclick="clearLog()" title="Clear log">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="detection-log" id="logContainer">
+                    <div class="log-entry system">
+                        <span class="log-time">System</span>
+                        <span class="log-message">Waiting for connection…</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent detections table -->
+        <div class="card">
+            <div class="card-header">
+                <h2><i class="bi bi-clock-history"></i> Recent Detections</h2>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Type</th>
+                                <th>Message</th>
+                                <th>Confidence</th>
+                                <th>Keywords</th>
+                            </tr>
+                        </thead>
+                        <tbody id="detectionsList">
+                            <tr><td colspan="5" class="text-center">No detections yet</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </main>
+</div>
+
+<!-- Loading overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-content">
+        <div class="spinner"></div>
+        <p id="loadingMessage">Starting detector…</p>
+    </div>
+</div>
+
+<!-- Silent audio fallback -->
+<audio id="alarmSound" preload="auto" style="display:none;">
+    <source src="data:audio/wav;base64,UklGRlwAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YVAAAAA8Pzw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PDw8PA==" type="audio/wav">
+</audio>
+
+<script src="/js/monitor.js"></script>
+</body>
+</html>

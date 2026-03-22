@@ -1,0 +1,13 @@
+{
+  "name": "guardian-net",
+  "version": "1.0.0",
+  "description": "Guardian Net Emergency Detection System",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "cd backend && nodemon server.js",
+    "install-all": "npm install && cd backend && npm install"
+  },
+  "author": "",
+  "license": "MIT"
+}

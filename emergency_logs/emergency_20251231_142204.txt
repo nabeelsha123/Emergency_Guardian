@@ -1,0 +1,9 @@
+EMERGENCY DETECTION LOG
+==================================================
+Time: 2025-12-31 14:22:04
+Languages: malayalam
+Emergency Level: medium
+Spoken Text: 'സഹായം'
+Keywords: സഹായം
+Emergency Count: 1
+==================================================

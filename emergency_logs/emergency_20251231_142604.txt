@@ -1,0 +1,9 @@
+EMERGENCY DETECTION LOG
+==================================================
+Time: 2025-12-31 14:26:04
+Languages: english
+Emergency Level: medium
+Spoken Text: 'please help'
+Keywords: help
+Emergency Count: 3
+==================================================

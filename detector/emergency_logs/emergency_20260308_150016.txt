@@ -1,0 +1,10 @@
+EMERGENCY DETECTION LOG
+==================================================
+Time: 2026-03-08 15:00:16
+Patient ID: 1
+Languages: english
+Emergency Level: medium
+Spoken Text: 'emergency is needed'
+Keywords: emergency
+Emergency Count: 2
+==================================================
