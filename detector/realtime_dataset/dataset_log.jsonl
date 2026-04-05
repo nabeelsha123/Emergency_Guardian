@@ -1,0 +1,4 @@
+{"file": "sitting_20260331_103219_514662", "split": "train", "class_id": 1, "class_name": "sitting", "confidence": 0.4396, "angle": 10.0, "timestamp": "2026-03-31T10:32:19.538844"}
+{"file": "sitting_20260331_103230_815541", "split": "train", "class_id": 1, "class_name": "sitting", "confidence": 0.4062, "angle": 10.0, "timestamp": "2026-03-31T10:32:30.825051"}
+{"file": "sitting_20260331_103303_520656", "split": "train", "class_id": 1, "class_name": "sitting", "confidence": 0.5714, "angle": 10.0, "timestamp": "2026-03-31T10:33:03.524667"}
+{"file": "sitting_20260331_103537_518693", "split": "train", "class_id": 1, "class_name": "sitting", "confidence": 0.6372, "angle": 10.0, "timestamp": "2026-03-31T10:35:37.524196"}
