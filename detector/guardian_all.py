@@ -4,6 +4,13 @@ Guardian Net - Enhanced Fall Detection + Voice Detection (Fixed)
 ════════════════════════════════════════════════════════════════
 UPDATED: Clean terminal output - only shows fall alerts
          + Real-time dataset collection (auto-saves training images)
+         + Fall video recording (saves video + snapshot on every fall)
+         + RETRAIN HELPER - suggests retraining after 50 new samples
+
+CHANGES v2:
+  • Fall video clips capped at 10 seconds (150 frames @ 15 fps)
+  • Dataset collector saves ONLY fallen frames (sitting/standing removed)
+  • RetrainHelper watches dataset and prints retrain command
 ════════════════════════════════════════════════════════════════
 """
 
@@ -96,13 +103,13 @@ FRAME_W, FRAME_H   = 640, 480
 FALL_CONF_THRESH   = 0.69
 REQUIRED_FALL_FRM  = 5
 REQUIRED_STAND_FRM = 10
-ALERT_COOLDOWN     = 5
+ALERT_COOLDOWN     = 3
 
 # IMPROVED ANGLE-BASED DETECTION
 ANGLE_FALL_MIN     = 48
-ANGLE_FALL_HIGH    = 67
-ANGLE_STAND_MAX    = 42
-ANGLE_SITTING_MAX  = 44
+ANGLE_FALL_HIGH    = 69
+ANGLE_STAND_MAX    = 46
+ANGLE_SITTING_MAX  = 55
 
 # Aspect ratio thresholds
 AR_FALL_MAX        = 0.90
@@ -115,13 +122,158 @@ HEIGHT_LOSS_FALL   = 0.18
 
 CLASS_NAMES        = ["fallen", "sitting", "standing"]
 
+# ── CHANGED: Maximum frames to record per fall clip (10 s × 15 fps = 150) ──
+FALL_RECORD_MAX_FRAMES = 150   # ← NEW constant (10-second cap)
+
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  DATASET COLLECTOR — saves frames + YOLO labels automatically
+#  FALL RECORDER  ← records video + snapshot while FALL_DETECTED is active
+#
+#  Saves into:  realtime_dataset/fall_recordings/
+#    fall_YYYYMMDD_HHMMSS.avi   ← video of the fall event (max 10 s)
+#    fall_YYYYMMDD_HHMMSS.jpg   ← snapshot of the first detected frame
+#
+#  CHANGE: recording auto-stops after FALL_RECORD_MAX_FRAMES (150 frames)
+#          so clips are always ≤ 10 seconds regardless of how long the fall
+#          state persists.
+# ══════════════════════════════════════════════════════════════════════════════
+class FallRecorder:
+    """
+    Records a video clip (max 10 s) and saves a snapshot for every fall event.
+    Runs its own background write-thread so it never stalls detection.
+    """
+
+    def __init__(self, base_dir):
+        # Save inside realtime_dataset/fall_recordings/
+        self.save_dir = os.path.join(base_dir, "fall_recordings")
+        os.makedirs(self.save_dir, exist_ok=True)
+
+        self._writer      = None     # cv2.VideoWriter
+        self._lock        = threading.Lock()
+        self._recording   = False
+        self._current_stem = None
+        self._frame_count = 0
+        self._total_clips = 0
+
+        # Count existing clips on startup
+        existing = [f for f in os.listdir(self.save_dir)
+                    if f.endswith(".avi")]
+        self._total_clips = len(existing)
+
+        print(f"   🎥 Fall recorder ready → {self.save_dir}")
+        print(f"      Existing clips: {self._total_clips}")
+        print(f"      Max clip length: {FALL_RECORD_MAX_FRAMES/15:.0f}s "
+              f"({FALL_RECORD_MAX_FRAMES} frames @ 15 fps)")
+
+    # ── Public API ─────────────────────────────────────────────────────────
+
+    def start(self, frame):
+        """
+        Called exactly ONCE when FALL_DETECTED state is entered.
+        Creates a new VideoWriter + saves the first frame as snapshot.
+        """
+        with self._lock:
+            if self._recording:
+                return   # already recording (safety guard)
+
+            ts   = datetime.now().strftime("%Y%m%d_%H%M%S")
+            stem = f"fall_{ts}"
+            self._current_stem = stem
+
+            # ── Video writer ──────────────────────────────────
+            vid_path = os.path.join(self.save_dir, f"{stem}.avi")
+            fourcc   = cv2.VideoWriter_fourcc(*"XVID")
+            self._writer = cv2.VideoWriter(
+                vid_path, fourcc, 15.0, (FRAME_W, FRAME_H)
+            )
+
+            # ── Snapshot of first fall frame ──────────────────
+            snap_path = os.path.join(self.save_dir, f"{stem}.jpg")
+            snap = cv2.resize(frame, (FRAME_W, FRAME_H))
+            cv2.imwrite(snap_path, snap,
+                        [cv2.IMWRITE_JPEG_QUALITY, 95])
+
+            self._recording   = True
+            self._frame_count = 1   # snapshot counts as frame 1
+
+            print(f"\n   🎥 Fall recording started → {stem}.avi  "
+                  f"(max {FALL_RECORD_MAX_FRAMES/15:.0f}s)")
+            print(f"   📸 Snapshot saved       → {stem}.jpg")
+
+    def write(self, frame):
+        """
+        Called every frame while FALL_DETECTED is active.
+        Thread-safe; silently skipped if not currently recording.
+
+        CHANGE: auto-stops after FALL_RECORD_MAX_FRAMES so the clip
+                is always capped at 10 seconds.
+        """
+        with self._lock:
+            if not self._recording or self._writer is None:
+                return
+
+            # ── CHANGED: cap at FALL_RECORD_MAX_FRAMES ─────────────────────
+            if self._frame_count >= FALL_RECORD_MAX_FRAMES:
+                # Silently finalise — fall state may still be active but we
+                # stop recording to keep clip ≤ 10 s.
+                self._finalise()
+                return
+
+            resized = cv2.resize(frame, (FRAME_W, FRAME_H))
+            self._writer.write(resized)
+            self._frame_count += 1
+
+    def stop(self):
+        """
+        Called when fall state clears (person got up or timeout).
+        Finalises and closes the video file (no-op if already auto-stopped).
+        """
+        with self._lock:
+            self._finalise()
+
+    def _finalise(self):
+        """
+        Internal: close the VideoWriter and update counters.
+        Must be called with self._lock already held.
+        """
+        if not self._recording:
+            return
+
+        if self._writer is not None:
+            self._writer.release()
+            self._writer = None
+
+        self._total_clips += 1
+        duration = self._frame_count / 15.0   # approx seconds at 15 fps
+        print(f"   🎥 Fall recording saved  "
+              f"({self._frame_count} frames, ~{duration:.1f}s) | "
+              f"Total clips: {self._total_clips}")
+
+        self._recording    = False
+        self._current_stem = None
+        self._frame_count  = 0
+
+    # ── Info helpers ───────────────────────────────────────────────────────
+
+    @property
+    def is_recording(self):
+        return self._recording
+
+    def print_summary(self):
+        print(f"\n   🎥 Fall Recordings → {self.save_dir}")
+        print(f"      Total clips saved: {self._total_clips}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  DATASET COLLECTOR — saves FALL frames + YOLO labels automatically
+#
+#  CHANGE: sitting and standing background collection REMOVED entirely.
+#          Only fallen (class 0) frames are saved to keep the dataset
+#          focused and disk usage minimal.
 # ══════════════════════════════════════════════════════════════════════════════
 class DatasetCollector:
     """
-    Automatically saves detected frames to a YOLO-format dataset.
+    Automatically saves FALL frames to a YOLO-format dataset.
 
     Directory layout created:
         realtime_dataset/
@@ -134,24 +286,16 @@ class DatasetCollector:
             dataset_log.jsonl   ← one JSON record per saved sample
             dataset.yaml        ← ready-to-use YOLO training config
 
-    Class map  →  0=fallen  1=sitting  2=standing
+    Class map  →  0=fallen  (sitting and standing no longer collected)
     """
 
     CLASS_MAP = {0: "fallen", 1: "sitting", 2: "standing"}
-    LABEL_FROM_STATE = {
-        "FALL_DETECTED": 0,   # fallen
-        "MONITORING":    2,   # standing (default when not fallen)
-    }
 
-    # How many frames to skip between saves (avoid duplicate frames)
+    # How many frames to skip between saves (avoid duplicate fall frames)
     SAVE_EVERY_N_FRAMES = 8
 
     # Minimum fall-confidence required to save a "fallen" sample
     MIN_FALL_CONF_TO_SAVE = 0.55
-
-    # How many standing/sitting frames to auto-collect per minute
-    # (keeps class balance; 0 = disable background collection)
-    BG_SAMPLES_PER_MINUTE = 4
 
     def __init__(self, base_dir=None):
         if base_dir is None:
@@ -170,18 +314,17 @@ class DatasetCollector:
         self.yaml_path = os.path.join(base_dir, "dataset.yaml")
         self._write_yaml()
 
-        # Internal counters
+        # Internal counters — only track fallen (0)
+        self._total_saved    = {0: 0, 1: 0, 2: 0}
         self._frame_counter  = 0
-        self._total_saved    = {0: 0, 1: 0, 2: 0}   # per-class count
-        self._last_bg_save   = time.time()
         self._lock           = threading.Lock()
 
         # Load existing counts from log if dataset already exists
         self._load_existing_counts()
 
         print(f"   💾 Dataset collector ready → {base_dir}")
-        print(f"      Existing samples: fallen={self._total_saved[0]} "
-              f"sitting={self._total_saved[1]} standing={self._total_saved[2]}")
+        print(f"      Existing fall samples: {self._total_saved[0]}")
+        print(f"      ℹ️  Only FALL frames are collected (sitting/standing disabled)")
 
     # ── Internal helpers ───────────────────────────────────────────────────
 
@@ -272,14 +415,14 @@ class DatasetCollector:
                  bbox, cls_id, cls_conf, body_angle):
         """
         Called every frame from process_frame().
-        Decides whether to save based on class, confidence, and frame rate.
+        CHANGE: only saves FALL frames — sitting and standing paths removed.
 
         Parameters
         ----------
         frame          : raw BGR frame (will be resized to FRAME_W x FRAME_H)
         detector_state : "MONITORING" | "FALL_DETECTED"
         fall_conf      : float 0-1
-        stand_conf     : float 0-1
+        stand_conf     : float 0-1  (unused now, kept for signature compat)
         bbox           : (x1,y1,x2,y2) or None
         cls_id         : int YOLO class id or None
         cls_conf       : float YOLO class confidence
@@ -287,35 +430,15 @@ class DatasetCollector:
         """
         with self._lock:
             self._frame_counter += 1
-            now = time.time()
 
-            # ── 1. Save FALL frames immediately (high priority) ────────────
+            # ── Save FALL frames only ──────────────────────────────────────
             if (detector_state == "FALL_DETECTED"
                     and fall_conf >= self.MIN_FALL_CONF_TO_SAVE
                     and self._frame_counter % self.SAVE_EVERY_N_FRAMES == 0):
                 self._do_save(frame, class_id=0, bbox=bbox,
                               confidence=fall_conf, angle=body_angle)
-                return
 
-            # ── 2. Save SITTING frames when cls_id == 1 ───────────────────
-            if (cls_id == 1
-                    and cls_conf >= 0.35
-                    and detector_state == "MONITORING"
-                    and self._frame_counter % (self.SAVE_EVERY_N_FRAMES * 2) == 0):
-                self._do_save(frame, class_id=1, bbox=bbox,
-                              confidence=cls_conf, angle=body_angle)
-                return
-
-            # ── 3. Periodic STANDING background collection ─────────────────
-            if (self.BG_SAMPLES_PER_MINUTE > 0
-                    and detector_state == "MONITORING"
-                    and fall_conf < 0.30
-                    and stand_conf > 0.50):
-                interval = 60.0 / self.BG_SAMPLES_PER_MINUTE
-                if now - self._last_bg_save >= interval:
-                    self._last_bg_save = now
-                    self._do_save(frame, class_id=2, bbox=bbox,
-                                  confidence=stand_conf, angle=body_angle)
+            # ── Sitting / standing collection intentionally removed ────────
 
     def _do_save(self, frame, class_id, bbox, confidence, angle):
         """Internal: resize, write image + label, update counters."""
@@ -332,10 +455,9 @@ class DatasetCollector:
 
             self._total_saved[class_id] += 1
             label = self.CLASS_MAP[class_id]
-            total = sum(self._total_saved.values())
+            total = self._total_saved[0]   # only fallen now
             print(f"   📸 Dataset +1 [{label.upper()}] conf={confidence:.2%} "
-                  f"angle={int(angle)}° | total={total} "
-                  f"(F:{self._total_saved[0]} Si:{self._total_saved[1]} St:{self._total_saved[2]})")
+                  f"angle={int(angle)}° | fallen_total={total}")
 
         except Exception as e:
             print(f"   ⚠️  Dataset save error: {e}")
@@ -345,14 +467,52 @@ class DatasetCollector:
 
     def print_summary(self):
         s = self._total_saved
-        total = sum(s.values())
         print(f"\n   📊 Dataset Summary → {self.base_dir}")
-        print(f"      fallen={s[0]}  sitting={s[1]}  standing={s[2]}  total={total}")
+        print(f"      fallen={s[0]}  (sitting/standing not collected)")
         print(f"      Config: {self.yaml_path}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  FALL DETECTOR — CLEAN OUTPUT (no angle logging)
+#  RETRAIN HELPER — tells operator when to retrain with new data
+# ══════════════════════════════════════════════════════════════════════════════
+class RetrainHelper(threading.Thread):
+    """
+    Background thread that watches the dataset fall count and prints
+    a retrain command every time NOTIFY_EVERY new samples are saved.
+
+    HOW REAL-TIME DATA BECOMES THE NEXT MODEL:
+      1.  This system saves fall frames → realtime_dataset/
+      2.  You retrain:  yolo train data=realtime_dataset/dataset.yaml
+                        model=<current_best.pt>  pretrained=True
+      3.  New best.pt auto-loads on next startup via _load_model()
+    """
+    NOTIFY_EVERY = 50   # print command after every 50 new fall frames
+
+    def __init__(self, dataset_collector, model_path):
+        super().__init__(daemon=True, name="RetrainHelper")
+        self.dataset = dataset_collector
+        self.model_path = model_path
+        self._last_notified = 0
+
+    def run(self):
+        while True:
+            time.sleep(30)
+            fallen = self.dataset._total_saved[0]
+            if fallen >= self._last_notified + self.NOTIFY_EVERY:
+                self._last_notified = (fallen // self.NOTIFY_EVERY) * self.NOTIFY_EVERY
+                yaml = self.dataset.yaml_path
+                print(f"\n{'='*60}")
+                print(f"💡 RETRAIN SUGGESTION — {fallen} fall samples collected")
+                print(f"   Run this command to fine-tune your model:")
+                print(f"   yolo train data={yaml} \\")
+                print(f"        model={self.model_path} \\")
+                print(f"        pretrained=True epochs=50 imgsz=640")
+                print(f"   Then restart Guardian Net — it will auto-load the new model.")
+                print(f"{'='*60}\n")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  FALL DETECTOR — CLEAN OUTPUT (no angle logging) + DATASET INTEGRATION
 # ══════════════════════════════════════════════════════════════════════════════
 class UnifiedFallDetector:
     def __init__(self, alert_sender, shared_state):
@@ -379,11 +539,30 @@ class UnifiedFallDetector:
         self.running       = True
         self.frame_queue   = queue.Queue(maxsize=2)
 
-        # ── Dataset collector (NEW) ────────────────────────────────────────
+        # ── Dataset collector (saves fall frames for future training) ───────
         self.dataset = DatasetCollector()
+
+        # ── Fall recorder (saves video clips of falls) ──────────────────────
+        self.recorder = FallRecorder(base_dir=self.dataset.base_dir)
+
+        # ── Retrain helper (suggests when to retrain) ───────────────────────
+        self.retrain_helper = RetrainHelper(self.dataset, self._get_model_path())
+        self.retrain_helper.start()
 
         print(f"   ✅ Fall Detection Ready [{self.model_label}]")
         print(f"   ⚙️  Fall threshold: {FALL_CONF_THRESH} | Angle threshold: {ANGLE_FALL_MIN}°")
+
+    def _get_model_path(self):
+        """Get current model path for retraining"""
+        base = os.path.dirname(os.path.abspath(__file__))
+        paths = [
+            os.path.join(base, "best.pt"),
+            os.path.join(os.path.dirname(base), "runs", "train", "fall_detection", "weights", "best.pt"),
+        ]
+        for p in paths:
+            if os.path.exists(p):
+                return p
+        return "yolov8n.pt"
 
     def _load_model(self):
         base  = os.path.dirname(os.path.abspath(__file__))
@@ -600,7 +779,7 @@ class UnifiedFallDetector:
         self.stand_hist.append(raw)
         return float(np.mean(self.stand_hist)) if len(self.stand_hist) >= 2 else raw
 
-    def _update_state(self, fall_conf, stand_conf):
+    def _update_state(self, fall_conf, stand_conf, frame):
         now = time.time()
         
         if self.state == "MONITORING":
@@ -615,15 +794,20 @@ class UnifiedFallDetector:
                 self.total_falls += 1
                 self.consecutive_stand_frms = 0
                 
+                # ── START RECORDING ON FALL DETECTED ──────────────────────────
+                self.recorder.start(frame)
+                
                 if now - self.last_alert_time > ALERT_COOLDOWN:
                     self.last_alert_time = now
                     msg = f"🚨 Fall detected with {fall_conf:.1%} confidence!"
                     alert_queue.put(("fall", msg, float(fall_conf)))
                     play_alarm_sound("fall")
-                    # CLEAN OUTPUT - only this line prints
                     print(f"\n🔴 FALL DETECTED! Conf={fall_conf:.2%} | Angle={int(self.body_angle)}° | Total={self.total_falls}")
-        
+
         elif self.state == "FALL_DETECTED":
+            # ── WRITE FRAME TO RECORDING ────────────────────────────────────
+            self.recorder.write(frame)
+
             if stand_conf > 0.60:
                 self.consecutive_stand_frms += 1
             else:
@@ -635,11 +819,12 @@ class UnifiedFallDetector:
                 self._clear_fall("   🔄 Fall timeout — resuming monitoring.")
 
     def _clear_fall(self, msg):
+        # ── STOP RECORDING WHEN FALL ENDS ───────────────────────────────────
+        self.recorder.stop()
         self.state = "MONITORING"
         self.consecutive_fall_frms = 0
         self.consecutive_stand_frms = 0
         self.fall_hist.clear()
-        # Keep this minimal output
         print(msg)
 
     def process_frame(self, frame):
@@ -678,18 +863,18 @@ class UnifiedFallDetector:
             self.prev_bbox = bbox
             self.prev_time = time.time()
         
-        self._update_state(fall_conf, stand_conf)
+        self._update_state(fall_conf, stand_conf, proc)
 
-        # ── DATASET COLLECTION (NEW — single call, no logic change above) ──
+        # ── DATASET COLLECTION (fall only) ─────────────────────────────────
         self.dataset.try_save(
-            frame       = proc,
+            frame          = proc,
             detector_state = self.state,
-            fall_conf   = fall_conf,
-            stand_conf  = stand_conf,
-            bbox        = bbox,
-            cls_id      = cls_id,
-            cls_conf    = cls_conf,
-            body_angle  = self.body_angle,
+            fall_conf      = fall_conf,
+            stand_conf     = stand_conf,
+            bbox           = bbox,
+            cls_id         = cls_id,
+            cls_conf       = cls_conf,
+            body_angle     = self.body_angle,
         )
         
         self.shared_state['fall'] = {
@@ -698,10 +883,11 @@ class UnifiedFallDetector:
             'total':      self.total_falls,
             'model':      self.model_label,
             'angle':      int(self.body_angle) if hasattr(self, 'body_angle') else 0,
-            # dataset stats exposed to display thread
             'ds_fallen':   self.dataset._total_saved[0],
             'ds_sitting':  self.dataset._total_saved[1],
             'ds_standing': self.dataset._total_saved[2],
+            'rec_active':  self.recorder.is_recording,
+            'rec_clips':   self.recorder._total_clips,
         }
         
         return fall_conf, stand_conf, keypoints, bbox, cls_id, cls_conf
@@ -752,6 +938,9 @@ class UnifiedFallDetector:
                 print(f"   ⚠️ Fall error: {e}")
                 time.sleep(0.5)
         
+        if self.recorder.is_recording:
+            self.recorder.stop()
+
         cap.release()
         print("   👋 Fall detection stopped")
 
@@ -966,9 +1155,12 @@ def display_thread(fall_detector, shared_state):
     cv2.resizeWindow("Guardian Net - Fall & Voice Detection", 800, 600)
 
     shared_state.setdefault('voice', {'status': 'Listening', 'total': 0})
-    shared_state.setdefault('fall',  {'state': 'MONITORING', 'confidence': 0,
-                                      'total': 0, 'model': '', 'angle': 0,
-                                      'ds_fallen': 0, 'ds_sitting': 0, 'ds_standing': 0})
+    shared_state.setdefault('fall',  {
+        'state': 'MONITORING', 'confidence': 0,
+        'total': 0, 'model': '', 'angle': 0,
+        'ds_fallen': 0, 'ds_sitting': 0, 'ds_standing': 0,
+        'rec_active': False, 'rec_clips': 0,
+    })
 
     fps_start = time.time()
     fps_count = 0
@@ -1076,15 +1268,30 @@ def display_thread(fall_detector, shared_state):
                       (185, 185, 185))
                 cv2.putText(disp, t2, (xp, sy + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.43, c2, 1)
 
-            # ── Dataset counter row (NEW) ──────────────────────────────────
+            # ── Dataset counter row (fall-only) ────────────────────────────
             dy = sy + 48 + 6
-            df = fall_state.get('ds_fallen',   0)
-            ds = fall_state.get('ds_sitting',  0)
-            dt = fall_state.get('ds_standing', 0)
+            df = fall_state.get('ds_fallen', 0)
             cv2.rectangle(disp, (20, dy), (w - 20, dy + 22), (8, 8, 20), -1)
-            ds_txt = f"💾 Dataset  Fallen:{df}  Sitting:{ds}  Standing:{dt}  Total:{df+ds+dt}"
+            ds_txt = f"💾 Dataset  Fallen:{df}  (sitting/standing not collected)"
             cv2.putText(disp, ds_txt, (28, dy + 15),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.38, (120, 200, 255), 1)
+
+            # ── Recording indicator row ────────────────────────────────────
+            ry = dy + 22 + 4
+            rec_active = fall_state.get('rec_active', False)
+            rec_clips  = fall_state.get('rec_clips',  0)
+            cv2.rectangle(disp, (20, ry), (w - 20, ry + 22), (8, 8, 8), -1)
+            if rec_active:
+                blink = int(time.time() * 2) % 2
+                dot_col = (0, 0, 220) if blink else (0, 0, 160)
+                cv2.circle(disp, (36, ry + 11), 6, dot_col, -1)
+                rec_txt = f"● REC (max 10s)  Clips saved: {rec_clips}"
+                rc = (0, 80, 255)
+            else:
+                rec_txt = f"○ NOT RECORDING  Clips saved: {rec_clips}"
+                rc = (120, 120, 120)
+            cv2.putText(disp, rec_txt, (48, ry + 15),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, rc, 1)
 
             cv2.putText(disp, "Q=quit", (w - 65, h - 8),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.40, (100, 100, 100), 1)
@@ -1129,8 +1336,12 @@ def main():
 
     shared_state = {
         'voice': {'status': 'Starting...', 'total': 0},
-        'fall':  {'state': 'Starting...', 'confidence': 0, 'total': 0, 'model': '', 'angle': 0,
-                  'ds_fallen': 0, 'ds_sitting': 0, 'ds_standing': 0},
+        'fall':  {
+            'state': 'Starting...', 'confidence': 0, 'total': 0,
+            'model': '', 'angle': 0,
+            'ds_fallen': 0, 'ds_sitting': 0, 'ds_standing': 0,
+            'rec_active': False, 'rec_clips': 0,
+        },
     }
 
     print("\n🔧 Initializing detectors...")
@@ -1143,7 +1354,9 @@ def main():
     print("📹 Fall  : Camera (Improved Angle Detection)")
     print(f"   ⚙️  Confidence threshold: {FALL_CONF_THRESH} | Angle threshold: {ANGLE_FALL_MIN}°")
     print("🎤 Voice : Microphone  (EN / Malayalam / Hindi)")
-    print("💾 Dataset: realtime_dataset/  (auto-collecting training data)")
+    print("💾 Dataset: realtime_dataset/  (fall frames only)")
+    print(f"🎥 Video : realtime_dataset/fall_recordings/  (max {FALL_RECORD_MAX_FRAMES/15:.0f}s clips)")
+    print("💡 RETRAIN: After 50+ samples, retrain command will appear in terminal")
     print("\nPress Q in the video window to quit")
     print("="*70 + "\n")
 
@@ -1166,8 +1379,8 @@ def main():
     fall_detector.stop()
     voice_detector.stop()
 
-    # ── Final dataset summary (NEW) ────────────────────────────────────────
     fall_detector.dataset.print_summary()
+    fall_detector.recorder.print_summary()
 
     print("\n📊 Final Summary")
     print("="*50)
